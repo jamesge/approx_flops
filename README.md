@@ -20,6 +20,7 @@ q = x.matmul(Wq).view("B,T,H,D").transpose(1,2)
 print(q)
 k = x.matmul(Wk).view("B,T,H,D").transpose(1,2)
 v = x.matmul(Wv).view("B,T,H,D").transpose(1,2)
+# if `causal' is True, the calculated flops will be half-ed
 attn = q.matmul(k.transpose(-1,-2), causal=True)
 Wo = FakeTensor("C,C")
 merged_v = attn.matmul(v, causal=True).view("B,T,C")

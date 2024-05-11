@@ -246,6 +246,7 @@ class FakeTensor:
         r.shape = newshape
         return r
     
+    # if `causal' is True, the calculated flops will be half-ed
     def matmul(self, other, causal = False):
         if not isinstance(other, FakeTensor):
             raise Exception("ERR: other must be FakeTensor as well")
