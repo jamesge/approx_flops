@@ -1,4 +1,4 @@
-# approx_flops
+# Approximate Flops
 
 A script to calculate flops approximately (mainly coming from matmul).
 
