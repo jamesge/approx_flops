@@ -31,3 +31,17 @@ x3 = x2.matmul(fc1).matmul(fc2)
 
 FakeTensor.print_flops()
 ```
+
+Running result:
+```
+Matmul: (B,T,C)-(1,4,8) @ (C,C)-(8,8) -> (B,T,C)-(1,4,8), new_flops=2.0BCCT total_flops=2.0BCCT=512
+(B,H,T,D)-(1,2,4,4)
+Matmul: (B,T,C)-(1,4,8) @ (C,C)-(8,8) -> (B,T,C)-(1,4,8), new_flops=2.0BCCT total_flops=4.0BCCT=1024
+Matmul: (B,T,C)-(1,4,8) @ (C,C)-(8,8) -> (B,T,C)-(1,4,8), new_flops=2.0BCCT total_flops=6.0BCCT=1536
+Matmul: (B,H,T,D)-(1,2,4,4) @ (B,H,D,T)-(1,2,4,4) -> (B,H,T,T)-(1,2,4,4), new_flops=BCTT total_flops=6.0BCCT+BCTT=1664
+Matmul: (B,H,T,T)-(1,2,4,4) @ (B,H,T,D)-(1,2,4,4) -> (B,H,T,D)-(1,2,4,4), new_flops=BCTT total_flops=6.0BCCT+2.0BCTT=1792
+Matmul: (B,T,C)-(1,4,8) @ (C,C)-(8,8) -> (B,T,C)-(1,4,8), new_flops=2.0BCCT total_flops=8.0BCCT+2.0BCTT=2304
+Matmul: (B,T,C)-(1,4,8) @ (C,4*C)-(8,32) -> (B,T,4*C)-(1,4,32), new_flops=8.0BCCT total_flops=16.0BCCT+2.0BCTT=4352
+Matmul: (B,T,4*C)-(1,4,32) @ (4*C,C)-(32,8) -> (B,T,C)-(1,4,8), new_flops=8.0BCCT total_flops=24.0BCCT+2.0BCTT=6400
+TotalFlops: 24.0BCCT+2.0BCTT=6400
+```
