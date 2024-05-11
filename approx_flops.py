@@ -64,6 +64,7 @@ def get_int_from_desc(desc: str) -> int:
     assert int(p) == p, f"Expect {p} to be integer"
     return int(p)
 
+# NOTE: could be overwritten
 def register_variable(var_name:str, val):
     if isinstance(val, int) or isinstance(val, float):
         g_var_registry[var_name] = VarMeta(val, [])
@@ -77,7 +78,6 @@ def register_variable(var_name:str, val):
         raise Exception("Unsupported type of val")
 
 def get_shape_from_names(shape_names: list[str]):
-    # FIXME: Check int before conversion
     return [get_int_from_desc(var_name) for var_name in shape_names]
 
 class ProductOfNames:
@@ -238,6 +238,7 @@ class FakeTensor:
         newshape = get_shape_from_names(newshape_names)
         n1 = numel(newshape)
         n2 = numel(self.shape)
+        # FIXME: not strictly right, should be fixed soon
         if n1 != n2:
             raise Exception(f"Unmatched view {n1} {n2}")
         r = FakeTensor(None)
@@ -301,6 +302,7 @@ if __name__ == '__main__':
     register_variable("H", 2)
     register_variable("D", 4)
     register_variable("C", "D*H")
+    # HACKY: a work-around to replace D*H with C to make the symbolic flops more readable
     register_variable("D*H", "C")
 
     x = FakeTensor("B,T,C")
@@ -329,6 +331,7 @@ if __name__ == '__main__':
     register_variable("C", 5120)
     register_variable("Dk", "0.1*C")
     register_variable("Dq", "0.3*C")
+    # HACKY: a work-around to replace D*H with C to make the symbolic flops more readable
     register_variable("D*H", "3.2*C")
     
     x = FakeTensor("B,T,C")
