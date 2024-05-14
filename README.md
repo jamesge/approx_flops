@@ -23,13 +23,11 @@ v = x.matmul(Wv).view("B,T,H,D").transpose(1,2)
 # if `causal' is True, the calculated flops will be half-ed
 attn = q.matmul(k.transpose(-1,-2), causal=True)
 Wo = FakeTensor("C,C")
-merged_v = attn.matmul(v, causal=True).view("B,T,C")
+merged_v = attn.matmul(v, causal=True).transpose(1,2).view("B,T,C")
 x2 = merged_v.matmul(Wo)
 fc1 = FakeTensor("C,4*C")
 fc2 = FakeTensor("4*C,C")
 x3 = x2.matmul(fc1).matmul(fc2)
-
-FakeTensor.print_flops()
 ```
 
 Running result:

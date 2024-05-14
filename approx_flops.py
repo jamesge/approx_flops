@@ -3,7 +3,7 @@ from dataclasses import dataclass
 @dataclass
 class VarMeta:
     value: float
-    expansions: list[str]
+    reductions: list[str]
 
 g_var_registry = dict[str, VarMeta]()
 g_merge_registry = dict[str, VarMeta]()
@@ -39,9 +39,9 @@ def get_varmeta_from_desc(desc: str):
         if not name in g_var_registry:
             raise Exception(f"Unknown desc={name}, register it with register_variable")
         p *= g_var_registry[name].value
-    expansions = [str(cf)]
-    expansions.extend(remaining_names)
-    return VarMeta(p, expansions)
+    reductions = [str(cf)]
+    reductions.extend(remaining_names)
+    return VarMeta(p, reductions)
 
 def get_int_from_desc(desc: str) -> int:
     cf, remaining_names = get_atomic_names(desc, False)
@@ -85,12 +85,12 @@ class SymbolicProduct:
         for i, n in enumerate(names):
             if '*' in n:
                 # shape_name may contain *, e.g. "D*H", split it first to
-                # ease further expansions
+                # ease further reductions
                 idx_to_be_removed.append(i)
                 names.extend([x.strip() for x in n.split('*')])
-            elif n in g_var_registry and len(g_var_registry[n].expansions) > 0:
+            elif n in g_var_registry and len(g_var_registry[n].reductions) > 0:
                 idx_to_be_removed.append(i)
-                names.extend(g_var_registry[n].expansions)
+                names.extend(g_var_registry[n].reductions)
         for i in idx_to_be_removed[::-1]:
             del names[i]
 
@@ -103,14 +103,14 @@ class SymbolicProduct:
                 if n_s > n_m:
                     n_s, n_m = n_m, n_s
                 n2 = f"{n_s}*{n_m}"
-                if n2 in g_merge_registry and len(g_merge_registry[n2].expansions) > 0:
+                if n2 in g_merge_registry and len(g_merge_registry[n2].reductions) > 0:
                     #print(f"found n2={n2} i={i} j={j} names={names}")
                     idx_to_be_removed.append(i)
                     idx_to_be_removed.append(j)
                     e = g_merge_registry[n2]
                     names[i] = "" # must be erased
                     names[j] = "" 
-                    names.extend(e.expansions)
+                    names.extend(e.reductions)
                     break
         for i in idx_to_be_removed[::-1]:
             del names[i]
@@ -325,12 +325,14 @@ class FakeTensor:
 
 if __name__ == '__main__':
     register_variable("B", 1)
-    register_variable("T", 3)
+    register_variable("T", 4)
     register_variable("H", 2)
     register_variable("D", 4)
     register_variable("C", "D*H")
     # HACKY: a work-around to replace D*H with C to make the symbolic flops more readable
     register_variable("D*H", "C")
+
+    print(f"g_var_registry: {g_var_registry}\ng_merge_registry: {g_merge_registry}");
 
     x = FakeTensor("B,T,C")
     Wq = FakeTensor("C,C")
@@ -362,7 +364,7 @@ if __name__ == '__main__':
     register_variable("D*H", "3.2*C")
     register_variable("Tq", "T")
 
-    print(f"g_var_registry={g_var_registry}\ng_merge_registry={g_merge_registry}");
+    print(f"g_var_registry: {g_var_registry}\ng_merge_registry: {g_merge_registry}");
     
     cur_x = FakeTensor("B,Tq,C")
     all_x = FakeTensor("B,T,C")
