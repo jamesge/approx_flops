@@ -1,11 +1,5 @@
 from dataclasses import dataclass
 
-def numel(sizes:list):
-    p:int = 1
-    for sz in sizes:
-        p *= sz
-    return p
-
 @dataclass
 class VarMeta:
     value: float
@@ -38,20 +32,15 @@ def get_atomic_names(var_name: str, float_or_int:bool) -> tuple[float|int, list]
                 atomic_names.append(sub_var_name)
         return (const_factor, atomic_names)
     
-def get_varmeta_from_desc(desc: str, always_have_expansions: bool):
+def get_varmeta_from_desc(desc: str):
     cf, remaining_names = get_atomic_names(desc, True)
     p = cf
     for name in remaining_names:
         if not name in g_var_registry:
             raise Exception(f"Unknown desc={name}, register it with register_variable")
         p *= g_var_registry[name].value
-    expansions = []
-    if cf == 1 and len(remaining_names) == 1 and not always_have_expansions:
-        # keep expansions empty for regular variables
-        pass
-    else:
-        expansions.append(str(cf))
-        expansions.extend(remaining_names)
+    expansions = [str(cf)]
+    expansions.extend(remaining_names)
     return VarMeta(p, expansions)
 
 def get_int_from_desc(desc: str) -> int:
@@ -71,16 +60,22 @@ def register_variable(var_name:str, val):
     elif isinstance(val, str):
         # handy to define variable based on product of other variables
         if not '*' in var_name:
-            g_var_registry[var_name] = get_varmeta_from_desc(val, False)
+            g_var_registry[var_name] = get_varmeta_from_desc(val)
         else:
-            g_merge_registry[var_name] = get_varmeta_from_desc(val, True)
+            g_merge_registry[var_name] = get_varmeta_from_desc(val)
     else:
         raise Exception("Unsupported type of val")
 
 def get_shape_from_names(shape_names: list[str]):
     return [get_int_from_desc(var_name) for var_name in shape_names]
 
-class ProductOfNames:
+def numel(shape:list):
+    p:int = 1
+    for sz in shape:
+        p *= sz
+    return p
+
+class SymbolicProduct:
     def __init__(self, names:list[str]):
         self.names = []
         self.const_factor = 1
@@ -132,7 +127,6 @@ class ProductOfNames:
                         self.names.append(sub_var_name)
             
         self.names.sort()
-        #print(f"input={names} out={self}")
 
     def __repr__(self):
         desc = ""
@@ -154,21 +148,32 @@ class ProductOfNames:
                 return False
         return True
 
-def combine_products(sum_of_prods: list[ProductOfNames], new_prod:ProductOfNames):
-    for prod in sum_of_prods:
-        if prod.equal(new_prod):
-            prod.const_factor += new_prod.const_factor
-            return 
-    sum_of_prods.append(new_prod)
+class SymbolicExpr:
+    def __init__(self):
+        self.sum_of_prods: list[SymbolicProduct] = []
+
+    def add_product(self, new_prod:SymbolicProduct):
+        for prod in self.sum_of_prods:
+            if prod.equal(new_prod):
+                # merge with existing product
+                prod.const_factor += new_prod.const_factor
+                return 
+        self.sum_of_prods.append(new_prod)
+
+    def __repr__(self):
+        return '+'.join([str(x) for x in self.sum_of_prods])
+
+    def clear(self):
+        self.sum_of_prods.clear()
         
 class FakeTensor:
     accum_flops = 0
-    flops_desc = []
+    accum_flops_expr = SymbolicExpr()
     print_flops_after_each_matmul = True
 
     @staticmethod
     def flops_str():
-        return f"{'+'.join([str(x) for x in FakeTensor.flops_desc])}={FakeTensor.accum_flops}"
+        return f"{FakeTensor.accum_flops_expr}={FakeTensor.accum_flops}"
 
     @staticmethod
     def print_flops():
@@ -177,7 +182,7 @@ class FakeTensor:
     @staticmethod
     def clear_flops():
         FakeTensor.accum_flops = 0
-        FakeTensor.flops_desc = []
+        FakeTensor.accum_flops_expr.clear()
 
     def __init__(self, shapedesc: str|None):
         self.shape = []
@@ -236,11 +241,32 @@ class FakeTensor:
     def view(self, newshape_desc):
         newshape_names = parse_shape_names(newshape_desc)
         newshape = get_shape_from_names(newshape_names)
-        n1 = numel(newshape)
-        n2 = numel(self.shape)
-        # FIXME: not strictly right, should be fixed soon
-        if n1 != n2:
-            raise Exception(f"Unmatched view {n1} {n2}")
+        assert len(newshape) != 0 and len(self.shape) != 0
+        i1 = i2 = 0
+        p1 = p2 = 0
+        while i1 < len(newshape) and i2 < len(self.shape):
+            p1 = newshape[i1]
+            p2 = self.shape[i2]
+            if p1 < p2:
+                while p1 < p2 and i1 < len(newshape)-1:
+                    i1 += 1
+                    p1 *= newshape[i1]
+            elif p2 < p1:
+                while p2 < p1 and i2 < len(self.shape)-1:
+                    i2 += 1
+                    p2 *= self.shape[i2]
+            if p1 != p2:
+                raise Exception(f"Cannot view {self.shape} as {newshape}")
+            i1 += 1
+            i2 += 1
+        while i1 < len(newshape):
+            p1 *= self.shape[i1]
+            i1 += 1
+        while i2 < len(self.shape):
+            p2 *= self.shape[i2]
+            i2 += 1
+        if p1 != p2:
+            raise Exception(f"Cannot view {self.shape} as {newshape}")
         r = FakeTensor(None)
         r.shape_names = newshape_names
         r.shape = newshape
@@ -250,8 +276,8 @@ class FakeTensor:
     def matmul(self, other, causal = False):
         if not isinstance(other, FakeTensor):
             raise Exception("ERR: other must be FakeTensor as well")
-        assert other.axis_count() >= 2, "other tensor must have at least 2 dims"
-        assert self.axis_count() >= 2, "self tensor must have at least 2 dims"
+        assert other.axis_count() >= 2, "RHS tensor must have at least 2 dims"
+        assert self.axis_count() >= 2, "LHS tensor must have at least 2 dims"
         assert self.shape[-1] == other.shape[-2], f"dims for matmul does not match, ({self.shape[-2]},{self.shape[-1]})@({other.shape[-2]},{other.shape[-1]}) self={self} other={other}"
         min_axis = min(other.axis_count(), self.axis_count())
         # check broadcastable dims
@@ -269,7 +295,7 @@ class FakeTensor:
         pad_self = max_axis - len(self.shape)
         pad_other = max_axis - len(other.shape)
         batch_factor = 1
-        new_flops_desc_list = []
+        new_flops_prod_list = []
         for axis in range(0, max_axis - 2):
             d1 = safe_get(self.shape, axis - pad_self)
             d2 = safe_get(other.shape, axis - pad_other)
@@ -278,28 +304,28 @@ class FakeTensor:
             new_name = self.shape_names[axis] if d1 > d2 else other.shape_names[axis]
             ret.shape_names[axis] = new_name
             batch_factor *= new_d
-            new_flops_desc_list.append(new_name)
+            new_flops_prod_list.append(new_name)
         new_shape[-2] = self.shape[-2]
         new_shape[-1] = other.shape[-1]
         ret.shape_names[-2] = self.shape_names[-2]
         ret.shape_names[-1] = other.shape_names[-1]
         ret.shape = new_shape
         new_flops = batch_factor * self.shape[-2] * self.shape[-1] * other.shape[-1]
-        new_flops_desc_list.extend([f"{self.shape_names[-2]}", f"{self.shape_names[-1]}", f"{other.shape_names[-1]}"])
-        new_flops_desc = ProductOfNames(new_flops_desc_list)
+        new_flops_prod_list.extend([self.shape_names[-2], self.shape_names[-1], other.shape_names[-1]])
+        new_flops_expr = SymbolicProduct(new_flops_prod_list)
         if not causal:
             new_flops *= 2
-            new_flops_desc.const_factor *= 2
+            new_flops_expr.const_factor *= 2
         FakeTensor.accum_flops += new_flops
-        assert new_flops_desc is not None
-        combine_products(FakeTensor.flops_desc, new_flops_desc)
+        assert new_flops_expr is not None
+        FakeTensor.accum_flops_expr.add_product(new_flops_expr)
         if FakeTensor.print_flops_after_each_matmul:
-            print(f"Matmul: {self} @ {other} -> {ret}, new_flops={new_flops_desc} total_flops={FakeTensor.flops_str()}")
+            print(f"Matmul: {self} @ {other} -> {ret}, new_flops={new_flops_expr} total_flops={FakeTensor.flops_str()}")
         return ret
 
 if __name__ == '__main__':
     register_variable("B", 1)
-    register_variable("T", 4)
+    register_variable("T", 3)
     register_variable("H", 2)
     register_variable("D", 4)
     register_variable("C", "D*H")
@@ -311,12 +337,11 @@ if __name__ == '__main__':
     Wk = FakeTensor("C,C")
     Wv = FakeTensor("C,C")
     q = x.matmul(Wq).view("B,T,H,D").transpose(1,2)
-    print(q)
     k = x.matmul(Wk).view("B,T,H,D").transpose(1,2)
     v = x.matmul(Wv).view("B,T,H,D").transpose(1,2)
     attn = q.matmul(k.transpose(-1,-2), causal=True)
     Wo = FakeTensor("C,C")
-    merged_v = attn.matmul(v, causal=True).view("B,T,C")
+    merged_v = attn.matmul(v, causal=True).transpose(1,2).view("B,T,C")
     x2 = merged_v.matmul(Wo)
     fc1 = FakeTensor("C,4*C")
     fc2 = FakeTensor("4*C,C")
@@ -327,6 +352,7 @@ if __name__ == '__main__':
 
     print("\n=== clear ===")
     FakeTensor.clear_flops()
+    register_variable("T", 1024)
     register_variable("H", 128)
     register_variable("D", 128)
     register_variable("C", 5120)
@@ -334,20 +360,24 @@ if __name__ == '__main__':
     register_variable("Dq", "0.3*C")
     # HACKY: a work-around to replace D*H with C to make the symbolic flops more readable
     register_variable("D*H", "3.2*C")
+    register_variable("Tq", "T")
+
+    print(f"g_var_registry={g_var_registry}\ng_merge_registry={g_merge_registry}");
     
-    x = FakeTensor("B,T,C")
+    cur_x = FakeTensor("B,Tq,C")
+    all_x = FakeTensor("B,T,C")
     W_dq = FakeTensor("C,Dq")
     W_kv = FakeTensor("C,Dk")
-    C_q = x.matmul(W_dq)
-    C_kv = x.matmul(W_kv)
+    C_q = cur_x.matmul(W_dq)
+    C_kv = all_x.matmul(W_kv)
     W_uk = FakeTensor("Dk,D*H")
     W_uv = FakeTensor("Dk,D*H")
     k = C_kv.matmul(W_uk).view("B,T,H,D").transpose(1,2)
     v = C_kv.matmul(W_uv).view("B,T,H,D").transpose(1,2)
     W_uq = FakeTensor("Dq,D*H")
-    q = C_q.matmul(W_uq).view("B,T,H,D").transpose(1,2)
+    q = C_q.matmul(W_uq).view("B,Tq,H,D").transpose(1,2)
     attn = q.matmul(k.transpose(-1,-2), causal=True)
-    merged_v = attn.matmul(v, causal=True).view("B,T,D*H")
+    merged_v = attn.matmul(v, causal=True).transpose(1,2).view("B,Tq,D*H")
     Wo = FakeTensor("D*H,C")
     x2 = merged_v.matmul(Wo)
 
