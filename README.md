@@ -43,3 +43,7 @@ Matmul: (B,T,C)-(1,4,8) @ (C,4*C)-(8,32) -> (B,T,4*C)-(1,4,32), new_flops=8.0BCC
 Matmul: (B,T,4*C)-(1,4,32) @ (4*C,C)-(32,8) -> (B,T,C)-(1,4,8), new_flops=8.0BCCT total_flops=24.0BCCT+2.0BCTT=6400
 TotalFlops: 24.0BCCT+2.0BCTT=6400
 ```
+
+Call `.show_compute_graph()` on FakeTensors to show the DAG
+![example.png](./example.png)
+
