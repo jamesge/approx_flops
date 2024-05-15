@@ -5,8 +5,8 @@ A script to calculate flops/comms approximately.
 You can code the forward computation with FakeTensor and computed flops/comms will be printed, like this
 
 ```
-register_variable("B", 1)
-register_variable("T", 4)
+register_variable("B", 2)
+register_variable("T", 8)
 register_variable("H", 2)
 register_variable("D", 4)
 register_variable("C", "D*H")
