@@ -622,13 +622,12 @@ def single_device_example():
     #print(f"g_var_registry: {g_var_registry}\ng_merge_registry: {g_merge_registry}");
 
     x = FakeTensor("B,T,C").layer_norm()
-    all_x = FakeTensor("B,T,C").layer_norm()
     Wq = FakeTensor("C,C")
     Wk = FakeTensor("C,C")
     Wv = FakeTensor("C,C")
     q = x.matmul(Wq).view("B,T,H,D").transpose(1,2)
-    k = all_x.matmul(Wk).view("B,T,H,D").transpose(1,2)
-    v = all_x.matmul(Wv).view("B,T,H,D").transpose(1,2)
+    k = x.matmul(Wk).view("B,T,H,D").transpose(1,2)
+    v = x.matmul(Wv).view("B,T,H,D").transpose(1,2)
     attn = q.matmul(k.transpose(-1,-2), causal=True).softmax()
     merged_v = attn.matmul(v, causal=True).transpose(1,2).view("B,T,C")
     Wo = FakeTensor("C,C")
