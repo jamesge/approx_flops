@@ -249,6 +249,8 @@ class DeviceSpan:
 class Stats:
     accum_flops = 0
     accum_flops_expr = SymbolicExpr()
+    ignored_flops = 0
+    ignored_flops_expr = SymbolicExpr()
     accum_comms = 0
     accum_comms_expr = SymbolicExpr()
     
@@ -261,14 +263,21 @@ class Stats:
         return f"{Stats.accum_comms_expr}={Stats.accum_comms}"
 
     @staticmethod
-    def add_flops(new_flops:int, new_flops_expr:SymbolicProduct, prefix:str):
-        Stats.accum_flops += new_flops
-        Stats.accum_flops_expr.add_product(new_flops_expr)
-        print(f"{prefix} new_flops={new_flops_expr} total_flops={Stats.flops_str()}")
+    def add_flops(new_flops:int, new_flops_expr:SymbolicProduct, prefix:str, ignored=False):
+        if not ignored:
+            Stats.accum_flops += new_flops
+            Stats.accum_flops_expr.add_product(new_flops_expr)
+            print(f"{prefix} new_flops={new_flops_expr} total_flops={Stats.flops_str()}")
+        else:
+            Stats.ignored_flops += new_flops
+            Stats.ignored_flops_expr.add_product(new_flops_expr)
+            print(f"{prefix} ignored_flops={new_flops_expr}={new_flops}")
 
     @staticmethod
     def print_stats():
         print(f"TotalFlops: {Stats.flops_str()}")
+        if Stats.ignored_flops > 0:
+            print(f"IgnoredFlops: {Stats.ignored_flops_expr}={Stats.ignored_flops}")
         print(f"TotalComms: {Stats.comms_str()}")
 
     @staticmethod
@@ -419,22 +428,19 @@ class FakeTensor:
             del r.shape[dim]
             del r.shape_names[dim]
         r.compute_graph = GraphNode(f"sum({dim})->{r}", self.get_compute_graph())
-        # not add these little flops right now
-        #Stats.add_flops(self.numel(), SymbolicProduct(self.shape_names), f"Sum: {self} -> {r}")
+        Stats.add_flops(self.numel(), SymbolicProduct(self.shape_names), f"Sum: {self} -> {r}", ignored=True)
         return r
 
     def layer_norm(self):
         r = self.clone()
         r.compute_graph = GraphNode(f"LN", self.get_compute_graph())
-        # not add these little flops right now
-        #Stats.add_flops(r.numel(), SymbolicProduct(r.shape_names), f"LN:")
+        Stats.add_flops(r.numel(), SymbolicProduct(r.shape_names), f"LayerNorm:", ignored=True)
         return r
 
     def softmax(self):
         r = self.clone()
         r.compute_graph = GraphNode(f"softmax", self.get_compute_graph())
-        # not add these little flops right now
-        #Stats.add_flops(r.numel(), SymbolicProduct(r.shape_names), f"Softmax:")
+        Stats.add_flops(r.numel(), SymbolicProduct(r.shape_names), f"Softmax:", ignored=True)
         return r        
             
     def view(self, newshape_desc):
