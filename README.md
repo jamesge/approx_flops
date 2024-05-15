@@ -1,8 +1,8 @@
-# Approximate Flops
+# Approximate Flops/Communications
 
-A script to calculate flops approximately (mainly coming from matmul).
+A script to calculate flops/comms approximately.
 
-You can code the forward computation with FakeTensor and computed flops will be printed, like this
+You can code the forward computation with FakeTensor and computed flops/comms will be printed, like this
 
 ```
 register_variable("B", 1)

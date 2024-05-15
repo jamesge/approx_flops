@@ -600,7 +600,7 @@ def test_graph():
     print(n2)
 
 def single_device_example():
-    dense = False
+    dense = True
     
     register_variable("B", 2)
     register_variable("T", 8)
