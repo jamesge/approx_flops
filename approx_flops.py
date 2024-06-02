@@ -134,7 +134,7 @@ class SymbolicProduct:
 
         idx_to_be_removed = []
 
-        self.const_factor, names = parse_atomic_symbols_from_list(names)
+        self.const_factor, names = parse_atomic_symbols('*'.join(names))
 
         # single-variable reduction
         # NOTE: can't use enumerate since names may be extended during iteration
@@ -691,7 +691,7 @@ def multi_device_example():
         x3 = x2.matmul(fc1).matmul(fc2).reduce_scatter(scatter_axis=1)
         x3.show_compute_graph()
 
-def example2():
+def deepseek_v2():
     register_variable("B", 1)
     register_variable("T", 1024)
     register_variable("H", 128)
@@ -726,7 +726,7 @@ def example2():
 
 
 if __name__ == '__main__':
-    #examples = [test_graph, single_device_example, example2]
+    #examples = [test_graph, single_device_example, deepseek_v2]
     examples = [single_device_example]
 
     for example in examples:
